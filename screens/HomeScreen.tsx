@@ -1,108 +1,94 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image, Alert, ScrollView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
-export default function HomeScreen({ navigation, route }: HomeScreenProps) {
-  const [menuItems, setMenuItems] = useState<{ dishName: string; description: string; course: string; price: number }[]>([]);
+export default function HomeScreen({ navigation }: HomeScreenProps) {
+  const [menuItems, setMenuItems] = useState<any[]>([]);
 
-  useEffect(() => {
-    const loadMenuItems = async () => {
-      try {
-        const savedMenuItems = await AsyncStorage.getItem('menuItems');
-        if (savedMenuItems) {
-          setMenuItems(JSON.parse(savedMenuItems));
-        }
-      } catch (error) {
-        console.error('Error loading menu items from AsyncStorage:', error);
-      }
-    };
-
-    loadMenuItems();
-  }, []);
-
-  const saveMenuItems = async (items: { dishName: string; description: string; course: string; price: number }[]) => {
+  // Load menu items from AsyncStorage
+  const loadMenuItems = async () => {
     try {
-      await AsyncStorage.setItem('menuItems', JSON.stringify(items));
+      const storedMenu = await AsyncStorage.getItem('menuItems');
+      const parsedMenu = storedMenu ? JSON.parse(storedMenu) : [];
+      setMenuItems(parsedMenu);
     } catch (error) {
-      console.error('Error saving menu items to AsyncStorage:', error);
+      console.error('Error loading menu items:', error);
     }
   };
 
-  useEffect(() => {
-    if (route.params?.newItem) {
-      const newItem = route.params.newItem as { dishName: string; description: string; course: string; price: number };
-      const updatedMenuItems = [...menuItems, newItem];
-      setMenuItems(updatedMenuItems);
-      saveMenuItems(updatedMenuItems);
-    }
-  }, [route.params?.newItem]);
+  // Delete item by index
+  const deleteItem = async (index: number) => {
+    const updatedMenu = menuItems.filter((_, i) => i !== index);
 
-  const deleteItem = (index: number) => {
-    Alert.alert(
-      'Delete Item',
-      'Are you sure you want to delete this dish?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'OK', onPress: () => {
-            const updatedMenuItems = menuItems.filter((_, itemIndex) => itemIndex !== index);
-            setMenuItems(updatedMenuItems);
-            saveMenuItems(updatedMenuItems);
-          }
-        },
-      ],
-      { cancelable: true }
-    );
+    try {
+      await AsyncStorage.setItem('menuItems', JSON.stringify(updatedMenu));
+      setMenuItems(updatedMenu); // Update state
+      Alert.alert('Success', 'Dish removed successfully!');
+    } catch (error) {
+      console.error('Error removing item:', error);
+    }
   };
 
-  // Calculate average prices by course
+  // Calculate average price by course
   const calculateAveragePrice = (course: string) => {
-    const filteredItems = menuItems.filter(item => item.course === course);
+    const filteredItems = menuItems.filter((item) => item.course === course);
     const totalPrice = filteredItems.reduce((sum, item) => sum + item.price, 0);
     return filteredItems.length > 0 ? totalPrice / filteredItems.length : 0;
   };
 
+  // Load menu items whenever the screen is focused
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', loadMenuItems);
+    return unsubscribe;
+  }, [navigation]);
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Chef's Menu</Text>
-      
-      <Image
-        source={require('../assets/logo.png')}
-        style={styles.logo}
-        resizeMode="contain"
-      />
 
+      {/* Logo */}
+      <Image source={require('../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+
+      {/* Add Menu Button */}
       <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate('AddMenu')}>
         <Text style={styles.buttonText}>Add Menu</Text>
       </TouchableOpacity>
 
+      {/* Filter Menu Button */}
       <TouchableOpacity style={styles.filterButton} onPress={() => navigation.navigate('FilterMenu', { menuItems })}>
         <Text style={styles.buttonText}>Filter Menu</Text>
       </TouchableOpacity>
 
+      {/* Total Items Count */}
       <Text style={styles.itemCount}>Total Items: {menuItems.length}</Text>
-      <ScrollView></ScrollView>
-      <Text style={styles.avgPrice}>Average Price by Course:</Text>
-      {['Starters', 'Mains', 'Desserts'].map(course => (
-        <Text key={course} style={styles.avgPriceText}>
-          {course}: R{calculateAveragePrice(course).toFixed(2)}
-        </Text>
-      ))}
 
+      {/* Average Price by Course */}
+      <ScrollView>
+        <Text style={styles.avgPrice}>Average Price by Course:</Text>
+        {['Starters', 'Mains', 'Desserts'].map((course) => (
+          <Text key={course} style={styles.avgPriceText}>
+            {course}: R{calculateAveragePrice(course).toFixed(2)}
+          </Text>
+        ))}
+      </ScrollView>
+
+      {/* Menu Items List */}
       {menuItems.length === 0 ? (
         <Text style={styles.emptyMessage}>No dishes available. Add a dish to the menu!</Text>
       ) : (
         <FlatList
           data={menuItems}
-          keyExtractor={(item, index) => item.dishName + index}
+          keyExtractor={(item, index) => index.toString()}
           renderItem={({ item, index }) => (
             <View style={styles.menuItem}>
-              <Text style={styles.dishName}>{item.dishName} - {item.course}</Text>
-              <Text style={styles.description}>{item.description}</Text>
-              <Text style={styles.price}>R{item.price.toFixed(2)}</Text>
+              <Text style={styles.dishName}>{item.dishName}</Text>
+              <Text>{item.description}</Text>
+              <Text>{item.course}</Text>
+              <Text>{`R${item.price.toFixed(2)}`}</Text>
               <TouchableOpacity style={styles.deleteButton} onPress={() => deleteItem(index)}>
                 <Text style={styles.buttonText}>Delete</Text>
               </TouchableOpacity>
@@ -128,11 +114,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logo: {
-    width: 150,
-    height: 150,
+    width: 50,
+    height: 50,
     alignSelf: 'center',
-    marginBottom: 20,
-    borderRadius: 40,
+    marginBottom: 10,
+    borderRadius: 10,
     elevation: 5,
   },
   addButton: {
@@ -141,11 +127,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 10,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 5,
+    margin: 10,
   },
   filterButton: {
     backgroundColor: '#007bff',
@@ -153,11 +135,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 20,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 5,
+    margin: 10,
   },
   buttonText: {
     color: '#fff',
